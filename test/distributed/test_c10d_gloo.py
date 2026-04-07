@@ -1627,6 +1627,65 @@ class ProcessGroupGlooTest(MultiProcessTestCase):
             opts.rootTensor = 0
             pg.reduce([t1, t1], opts)
 
+    @requires_gloo()
+    def test_reduce_complex_unsupported_ops(self):
+        store = c10d.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            backend="gloo",
+            store=store,
+            rank=self.rank,
+            world_size=self.world_size,
+        )
+
+        unsupported_ops = [
+            c10d.ReduceOp.MAX,
+            c10d.ReduceOp.MIN,
+            c10d.ReduceOp.PRODUCT,
+            c10d.ReduceOp.BAND,
+            c10d.ReduceOp.BOR,
+            c10d.ReduceOp.BXOR,
+        ]
+
+        for op in unsupported_ops:
+            with self.subTest(op=op, fn="reduce"):
+                with self.assertRaisesRegex(
+                    ValueError, "does not support .* on complex tensors"
+                ):
+                    dist.reduce(
+                        torch.tensor([1 + 2j], dtype=torch.complex64),
+                        dst=self.rank,
+                        op=op,
+                    )
+
+            with self.subTest(op=op, fn="reduce_scatter"):
+                with self.assertRaisesRegex(
+                    ValueError, "does not support .* on complex tensors"
+                ):
+                    dist.reduce_scatter(
+                        torch.zeros(1, dtype=torch.complex64),
+                        [
+                            torch.tensor([1 + 2j], dtype=torch.complex64)
+                            for _ in range(self.world_size)
+                        ],
+                        op=op,
+                    )
+
+            with self.subTest(op=op, fn="reduce_scatter_tensor"):
+                with self.assertRaisesRegex(
+                    ValueError, "does not support .* on complex tensors"
+                ):
+                    dist.reduce_scatter_tensor(
+                        torch.zeros(1, dtype=torch.complex64),
+                        torch.ones(self.world_size, dtype=torch.complex64),
+                        op=op,
+                    )
+
+        # SUM on complex tensors should still work
+        t = torch.tensor([1 + 2j], dtype=torch.complex64)
+        dist.reduce(t, dst=0, op=c10d.ReduceOp.SUM)
+
+        dist.destroy_process_group()
+
     def _test_reduce_basics(self, fn):
         store = c10d.FileStore(self.file_name, self.world_size)
         pg = self._create_process_group_gloo(

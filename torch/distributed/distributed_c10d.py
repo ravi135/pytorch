@@ -3314,6 +3314,11 @@ def reduce(
         _warn_not_in_group("reduce")
         return
 
+    if tensor.is_complex():
+        if not supports_complex(op):
+            raise ValueError(f"reduce does not support {op} on complex tensors")
+        tensor = torch.view_as_real(tensor)
+
     opts = ReduceOptions()
     opts.reduceOp = op
     opts.rootRank = group_dst
@@ -4726,6 +4731,14 @@ def reduce_scatter(
         _warn_not_in_group("reduce_scatter")
         return
 
+    if output.is_complex():
+        if not supports_complex(op):
+            raise ValueError(
+                f"reduce_scatter does not support {op} on complex tensors"
+            )
+        output = torch.view_as_real(output)
+        input_list = [torch.view_as_real(t) for t in input_list]
+
     opts = ReduceScatterOptions()
     opts.reduceOp = op
     opts.asyncOp = async_op
@@ -4815,6 +4828,14 @@ def reduce_scatter_tensor(output, input, op=ReduceOp.SUM, group=None, async_op=F
     if _rank_not_in_group(group):
         _warn_not_in_group("reduce_scatter_tensor")
         return
+
+    if input.is_complex():
+        if not supports_complex(op):
+            raise ValueError(
+                f"reduce_scatter_tensor does not support {op} on complex tensors"
+            )
+        input = torch.view_as_real(input)
+        output = torch.view_as_real(output)
 
     opts = ReduceScatterOptions()
     opts.reduceOp = op
